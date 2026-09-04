@@ -102,22 +102,27 @@ const jsPsych = initJsPsych({
 });
 
 const objectDatasetDirectory = 'stimuli/OBJECTSALL/';
+const objectManifestPath = 'stimuli/object_manifest.json';
 const imagePath = (path) => path;
 
 async function discoverObjectImages() {
-  const response = await fetch(objectDatasetDirectory);
-  if (!response.ok) throw new Error(`Failed to read Brady image directory (${response.status}).`);
-  const html = await response.text();
-  const document = new DOMParser().parseFromString(html, 'text/html');
-  const paths = [...document.querySelectorAll('a[href]')]
-    .map((link) => new URL(link.href, window.location.href).pathname)
-    .map((path) => decodeURIComponent(path).replace(/^\//, ''))
+  const response = await fetch(objectManifestPath);
+
+  if (!response.ok) {
+    throw new Error(`Failed to load stimulus manifest (${response.status}).`);
+  }
+
+  const paths = await response.json();
+
+  const uniquePaths = [...new Set(paths)]
+    .filter((path) => typeof path === 'string')
     .filter((path) => path.startsWith(objectDatasetDirectory))
     .filter((path) => /\.(?:jpg|jpeg|png|webp)$/i.test(path));
-  const uniquePaths = [...new Set(paths)];
+
   if (uniquePaths.length < 292) {
     throw new Error(`At least 292 Brady images are required; found ${uniquePaths.length}.`);
   }
+
   return uniquePaths;
 }
 
