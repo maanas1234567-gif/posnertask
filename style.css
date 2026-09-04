@@ -1,0 +1,81 @@
+:root {
+  color: #eaf0f5;
+  background: #111820;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 18px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background: #111820;
+  overflow: hidden;
+}
+
+#jspsych-target {
+  min-height: 100vh;
+}
+
+.jspsych-display-element {
+  width: min(100%, 900px);
+  height: 100vh;
+  margin: 0 auto;
+  padding: clamp(0.75rem, 3vh, 2rem) clamp(0.75rem, 2vw, 1.25rem);
+  overflow-y: auto;
+}
+
+.jspsych-content {
+  max-width: 780px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.jspsych-btn {
+  padding: 0.7rem 1.4rem;
+  border: 1px solid #9cc7c9;
+  border-radius: 4px;
+  color: #102022;
+  background: #b7e0d8;
+  font: inherit;
+  cursor: pointer;
+}
+
+.jspsych-btn:hover, .jspsych-btn:focus { background: #d5f1e9; }
+
+.instruction { line-height: 1.55; }
+.instruction h1 { margin-top: 0; color: #b7e0d8; font-size: clamp(1.5rem, 4vw, 2.2rem); }
+.instruction p { max-width: 42rem; margin: 1rem auto; }
+
+.fixation { color: #f4eee2; font: 3rem/1 Arial, sans-serif; }
+.cue { color: #f4eee2; font: 4rem/1 Arial, sans-serif; }
+
+.match-grid {
+  display: grid;
+  grid-template: repeat(3, minmax(0, 1fr)) / repeat(3, minmax(0, 1fr));
+  gap: clamp(0.2rem, 1.5vmin, 0.8rem);
+  width: min(82vw, 520px, calc(100vh - 5rem));
+  aspect-ratio: 1;
+  margin: 0 auto;
+}
+
+.match-grid .image-slot { display: flex; align-items: center; justify-content: center; }
+.match-grid .image-slot img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.match-grid .empty { visibility: hidden; }
+
+.memory-image {
+  display: block;
+  width: min(70vw, 420px, calc(100vh - 8rem));
+  height: min(55vh, 360px, calc(100vh - 8rem));
+  margin: clamp(0.5rem, 3vh, 1.5rem) auto;
+  object-fit: contain;
+}
+
+.response-prompt { margin-top: 1.5rem; color: #b7e0d8; }
+
+@media (max-width: 480px) {
+  :root { font-size: 16px; }
+  .jspsych-display-element { padding: 1.25rem 0.75rem; }
+}
