@@ -1,6 +1,34 @@
 import { initJsPsych } from 'https://cdn.jsdelivr.net/npm/jspsych@8.2.1/+esm';
 import htmlKeyboardResponse from 'https://cdn.jsdelivr.net/npm/@jspsych/plugin-html-keyboard-response@2.1.0/+esm';
+import preloadPlugin from 'https://cdn.jsdelivr.net/npm/@jspsych/plugin-preload@2.1.0/+esm';
 import * as XLSX from 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm';
+
+const EXPERIMENT_VERSION = '1.1.0';
+// Remote upload is an optional future integration; local Excel export is always enabled.
+const REMOTE_DATA_CONFIG = {
+  enabled: false,
+  provider: 'DataPipe',
+  experimentId: ''
+};
+
+function createSessionId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return `session-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+const sessionMetadata = {
+  participant_id: createSessionId(),
+  session_id: createSessionId(),
+  experiment_version: EXPERIMENT_VERSION,
+  experiment_start_timestamp: new Date().toISOString(),
+  browser_user_agent: navigator.userAgent,
+  screen_width: screen.width,
+  screen_height: screen.height,
+  viewport_width: window.innerWidth,
+  viewport_height: window.innerHeight
+};
+
+document.getElementById('jspsych-target').innerHTML = '<section class="instruction"><h1>Loading experiment...</h1></section>';
 
 const jsPsych = initJsPsych({
   display_element: 'jspsych-target',
@@ -31,7 +59,23 @@ const jsPsych = initJsPsych({
       ['Response Time (ms)', 'rt_ms'],
       ['Duration (ms)', 'duration_ms'],
       ['Memory Status', 'image_status'],
-      ['Accuracy Code', 'accuracy']
+      ['Accuracy Code', 'accuracy'],
+      ['Source Phase 1 Trial', 'source_phase1_trial'],
+      ['Source Cue Validity', 'source_cue_validity'],
+      ['Source Target Location', 'source_target_location'],
+      ['Source Cue Direction', 'source_cue_direction'],
+      ['Source Phase 1 Response', 'source_phase1_response'],
+      ['Source Phase 1 Correct', 'source_phase1_correct'],
+      ['Source Phase 1 RT (ms)', 'source_phase1_rt'],
+      ['Participant ID', 'participant_id'],
+      ['Session ID', 'session_id'],
+      ['Experiment Version', 'experiment_version'],
+      ['Experiment Start Timestamp', 'experiment_start_timestamp'],
+      ['Browser User Agent', 'browser_user_agent'],
+      ['Screen Width', 'screen_width'],
+      ['Screen Height', 'screen_height'],
+      ['Viewport Width', 'viewport_width'],
+      ['Viewport Height', 'viewport_height']
     ];
     const rawTrials = jsPsych.data.get().values();
     const responseTasks = new Set(['practice_matching', 'phase1_matching', 'recognition']);
@@ -61,7 +105,23 @@ const jsPsych = initJsPsych({
       accuracy: trial.accuracy ?? '',
       rt_ms: trial.rt ?? '',
       duration_ms: trial.duration_ms ?? '',
-      image_status: trial.image_status ?? ''
+      image_status: trial.image_status ?? '',
+      source_phase1_trial: trial.source_phase1_trial ?? '',
+      source_cue_validity: trial.source_cue_validity ?? '',
+      source_target_location: trial.source_target_location ?? '',
+      source_cue_direction: trial.source_cue_direction ?? '',
+      source_phase1_response: trial.source_phase1_response ?? '',
+      source_phase1_correct: trial.source_phase1_correct ?? '',
+      source_phase1_rt: trial.source_phase1_rt ?? '',
+      participant_id: trial.participant_id ?? '',
+      session_id: trial.session_id ?? '',
+      experiment_version: trial.experiment_version ?? '',
+      experiment_start_timestamp: trial.experiment_start_timestamp ?? '',
+      browser_user_agent: trial.browser_user_agent ?? '',
+      screen_width: trial.screen_width ?? '',
+      screen_height: trial.screen_height ?? '',
+      viewport_width: trial.viewport_width ?? '',
+      viewport_height: trial.viewport_height ?? ''
     }));
     const resultRows = exportRows.map((row) => Object.fromEntries(
       exportColumns.map(([label, key]) => [label, row[key]])
@@ -73,6 +133,21 @@ const jsPsych = initJsPsych({
     const correctRows = answeredRows.filter((row) => row.response_outcome === 'Correct');
     const correctPhase1Rows = correctRows.filter((row) => row.task === 'phase1_matching');
     const correctRecognitionRows = correctRows.filter((row) => row.task === 'recognition');
+    const validPhase1Rows = phase1Rows.filter((row) => row.cue_validity === 'valid');
+    const invalidPhase1Rows = phase1Rows.filter((row) => row.cue_validity === 'invalid');
+    const validCorrectRows = validPhase1Rows.filter((row) => row.response_outcome === 'Correct');
+    const invalidCorrectRows = invalidPhase1Rows.filter((row) => row.response_outcome === 'Correct');
+    const oldValidRows = recognitionRows.filter((row) => row.image_status === 'old' && row.source_cue_validity === 'valid');
+    const oldInvalidRows = recognitionRows.filter((row) => row.image_status === 'old' && row.source_cue_validity === 'invalid');
+    const oldTrials = recognitionRows.filter((row) => row.image_status === 'old');
+    const newTrials = recognitionRows.filter((row) => row.image_status === 'new');
+    const hitCount = oldTrials.filter((row) => row.response_meaning === 'Old').length;
+    const falseAlarmCount = newTrials.filter((row) => row.response_meaning === 'Old').length;
+    const correctedHitRate = (hitCount + 0.5) / (oldTrials.length + 1);
+    const correctedFalseAlarmRate = (falseAlarmCount + 0.5) / (newTrials.length + 1);
+    const accuracyRate = (rows) => rows.length
+      ? rows.filter((row) => row.response_outcome === 'Correct').length / rows.length
+      : '';
     const phase1ImageIds = phase1Rows.flatMap((row) => [
       row.center_image_id,
       ...row.distractor_image_ids.split(',').filter(Boolean)
@@ -88,6 +163,8 @@ const jsPsych = initJsPsych({
       const values = rows.map((row) => Number(row.rt_ms)).filter((value) => Number.isFinite(value) && value > 0);
       return values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : '';
     };
+    const validMeanRt = meanRt(validCorrectRows);
+    const invalidMeanRt = meanRt(invalidCorrectRows);
     const summaryRows = [
       { Section: 'Recorded data', Measure: 'All recorded rows (includes instructions and timed events)', Value: rawTrials.length },
       { Section: 'Recorded data', Measure: 'Practice response trials', Value: exportRows.filter((row) => row.task === 'practice_matching').length },
@@ -102,6 +179,16 @@ const jsPsych = initJsPsych({
       { Section: 'Performance', Measure: 'Phase 1 mean RT on correct trials (ms)', Value: meanRt(correctPhase1Rows) },
       { Section: 'Performance', Measure: 'Phase 2 accuracy (% of answered recognition trials)', Value: responseRate(recognitionRows) },
       { Section: 'Performance', Measure: 'Phase 2 mean RT on correct trials (ms)', Value: meanRt(correctRecognitionRows) },
+      { Section: 'Cueing', Measure: 'Valid-trial mean RT (correct trials only, ms)', Value: validMeanRt },
+      { Section: 'Cueing', Measure: 'Invalid-trial mean RT (correct trials only, ms)', Value: invalidMeanRt },
+      { Section: 'Cueing', Measure: 'Cueing effect (invalid RT minus valid RT, ms)', Value: validMeanRt === '' || invalidMeanRt === '' ? '' : invalidMeanRt - validMeanRt },
+      { Section: 'Cueing', Measure: 'Valid accuracy (correct / all valid trials)', Value: accuracyRate(validPhase1Rows) },
+      { Section: 'Cueing', Measure: 'Invalid accuracy (correct / all invalid trials)', Value: accuracyRate(invalidPhase1Rows) },
+      { Section: 'Recognition', Measure: 'OLD hit rate (hits / all OLD images)', Value: oldTrials.length ? hitCount / oldTrials.length : '' },
+      { Section: 'Recognition', Measure: 'NEW false-alarm rate (false alarms / all NEW images)', Value: newTrials.length ? falseAlarmCount / newTrials.length : '' },
+      { Section: 'Recognition', Measure: "d-prime (d') with loglinear correction", Value: oldTrials.length && newTrials.length ? inverseNormalCDF(correctedHitRate) - inverseNormalCDF(correctedFalseAlarmRate) : '' },
+      { Section: 'Recognition', Measure: 'Accuracy for OLD valid-cue targets', Value: accuracyRate(oldValidRows) },
+      { Section: 'Recognition', Measure: 'Accuracy for OLD invalid-cue targets', Value: accuracyRate(oldInvalidRows) },
       { Section: 'Phase 1', Measure: 'Valid cue trials (cue points to target)', Value: phase1Rows.filter((row) => row.cue_validity === 'valid').length },
       { Section: 'Phase 1', Measure: 'Invalid cue trials (cue points elsewhere)', Value: phase1Rows.filter((row) => row.cue_validity === 'invalid').length },
       { Section: 'Phase 1', Measure: 'Up target trials', Value: phase1Rows.filter((row) => row.match_location === 'up').length },
@@ -117,9 +204,17 @@ const jsPsych = initJsPsych({
       ['Phase 1 has 64 trials', phase1Rows.length === 64, phase1Rows.length, 64],
       ['Phase 1 has 48 valid cues', phase1Rows.filter((row) => row.cue_validity === 'valid').length === 48, phase1Rows.filter((row) => row.cue_validity === 'valid').length, 48],
       ['Phase 1 has 16 invalid cues', phase1Rows.filter((row) => row.cue_validity === 'invalid').length === 16, phase1Rows.filter((row) => row.cue_validity === 'invalid').length, 16],
+      ['Invalid cues never point to their target', phase1Rows.filter((row) => row.cue_validity === 'invalid' && row.cue_direction === row.match_location).length === 0, phase1Rows.filter((row) => row.cue_validity === 'invalid' && row.cue_direction === row.match_location).length, 0],
       ['Phase 2 has 64 trials', recognitionRows.length === 64, recognitionRows.length, 64],
       ['Phase 2 has 32 old images', recognitionRows.filter((row) => row.image_status === 'old').length === 32, recognitionRows.filter((row) => row.image_status === 'old').length, 32],
       ['Phase 2 has 32 new images', recognitionRows.filter((row) => row.image_status === 'new').length === 32, recognitionRows.filter((row) => row.image_status === 'new').length, 32],
+      ['OLD set contains all 16 invalid targets', recognitionRows.filter((row) => row.image_status === 'old' && row.source_cue_validity === 'invalid').length === 16, recognitionRows.filter((row) => row.image_status === 'old' && row.source_cue_validity === 'invalid').length, 16],
+      ['OLD set contains 16 valid targets', recognitionRows.filter((row) => row.image_status === 'old' && row.source_cue_validity === 'valid').length === 16, recognitionRows.filter((row) => row.image_status === 'old' && row.source_cue_validity === 'valid').length, 16],
+      ...directions.map((direction) => {
+        const count = recognitionRows.filter((row) => row.image_status === 'old' && row.source_cue_validity === 'valid' && row.source_target_location === direction).length;
+        return [`OLD valid targets balanced at ${direction}`, count === 4, count, 4];
+      }),
+      ['NEW source Phase 1 fields are blank', recognitionRows.filter((row) => row.image_status === 'new').every((row) => !row.source_phase1_trial && !row.source_cue_validity && !row.source_phase1_response), recognitionRows.filter((row) => row.image_status === 'new' && (row.source_phase1_trial || row.source_cue_validity || row.source_phase1_response)).length, 0],
       ['Phase 2 image IDs are unique', new Set(recognitionRows.map((row) => row.image_id)).size === recognitionRows.length, new Set(recognitionRows.map((row) => row.image_id)).size, recognitionRows.length],
       ['Phase 1 targets are unique', new Set(phase1Rows.map((row) => row.center_image_id)).size === 64, new Set(phase1Rows.map((row) => row.center_image_id)).size, 64],
       ['Phase 1 target/distractor images are not reused', new Set(phase1ImageIds).size === phase1ImageIds.length, new Set(phase1ImageIds).size, phase1ImageIds.length],
@@ -150,7 +245,10 @@ const jsPsych = initJsPsych({
       { Column: 'Response Outcome', Meaning: 'Correct, Incorrect, No response, or Not applicable (for timed/instruction rows).' },
       { Column: 'Response Time (ms)', Meaning: 'JsPsych response time in milliseconds; blank when no key response was collected.' },
       { Column: 'Memory Status', Meaning: 'Old means shown in Phase 1; New means reserved and not shown before Phase 2.' },
-      { Column: 'Accuracy Code', Meaning: 'JsPsych score: 1=correct; 0=incorrect or no response. Use Response Outcome to distinguish omissions from wrong answers.' }
+      { Column: 'Accuracy Code', Meaning: 'JsPsych score: 1=correct; 0=incorrect or no response. Use Response Outcome to distinguish omissions from wrong answers. Summary accuracy uses all scheduled trials.' },
+      { Column: 'Source Phase 1 fields', Meaning: 'For OLD memory items, identifies their Phase 1 trial, cue condition/location, response, correctness, and RT. Blank for NEW images.' },
+      { Column: 'Participant and session fields', Meaning: 'Unique generated participant/session IDs, experiment version and start time, browser, screen, and viewport measurements.' },
+      { Column: 'd-prime correction', Meaning: 'Uses the loglinear correction: (hits + 0.5)/(OLD count + 1) and (false alarms + 0.5)/(NEW count + 1), preventing infinite d-prime.' }
     ];
     const workbook = XLSX.utils.book_new();
     const summarySheet = XLSX.utils.json_to_sheet(summaryRows);
@@ -158,7 +256,7 @@ const jsPsych = initJsPsych({
     const checksSheet = XLSX.utils.json_to_sheet(checkRows);
     const guideSheet = XLSX.utils.json_to_sheet(fieldGuideRows);
     summaryRows.forEach((row, index) => {
-      if (row.Measure.includes('accuracy (%')) {
+      if (row.Measure.includes('accuracy (%') || row.Measure.includes('accuracy (correct /') || row.Measure.includes(' rate (') || row.Measure.includes('Accuracy for OLD')) {
         const valueCell = summarySheet[XLSX.utils.encode_cell({ r: index + 1, c: 2 })];
         if (valueCell && valueCell.v !== '') valueCell.z = '0.0%';
       }
@@ -172,6 +270,12 @@ const jsPsych = initJsPsych({
     XLSX.utils.book_append_sheet(workbook, resultsSheet, 'Results');
     XLSX.utils.book_append_sheet(workbook, checksSheet, 'Data Checks');
     XLSX.utils.book_append_sheet(workbook, guideSheet, 'Field Guide');
+    const sessionSheet = XLSX.utils.json_to_sheet(Object.entries(sessionMetadata).map(([field, value]) => ({
+      Field: field,
+      Value: value
+    })));
+    sessionSheet['!cols'] = [{ wch: 34 }, { wch: 100 }];
+    XLSX.utils.book_append_sheet(workbook, sessionSheet, 'Session Info');
     const workbookData = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
 
     const timestamp = new Date().toISOString()
@@ -191,17 +295,34 @@ const jsPsych = initJsPsych({
       link.remove();
     };
 
+    void saveDataRemotely(JSON.stringify(rawTrials));
     download();
     document.getElementById('jspsych-target').innerHTML = `
       <section class="instruction">
         <h1>Finished</h1>
         <p>Thank you. Your responses have been recorded.</p>
-        <button class="jspsych-btn" id="download-results">Download Results Excel File</button>
+        <button class="jspsych-btn" id="download-results">Download Results</button>
       </section>`;
     document.getElementById('download-results').addEventListener('click', download);
     setTimeout(() => URL.revokeObjectURL(downloadUrl), 60000);
   }
 });
+
+jsPsych.data.addProperties(sessionMetadata);
+
+async function saveDataRemotely(dataJson) {
+  if (!REMOTE_DATA_CONFIG.enabled) return { status: 'disabled' };
+  if (!REMOTE_DATA_CONFIG.experimentId) {
+    console.warn('Remote data saving is enabled but its DataPipe experiment ID is not configured.');
+    return { status: 'not_configured' };
+  }
+  console.info('Remote data upload integration is not configured yet.', {
+    provider: REMOTE_DATA_CONFIG.provider,
+    experimentId: REMOTE_DATA_CONFIG.experimentId,
+    dataBytes: dataJson.length
+  });
+  return { status: 'integration_required' };
+}
 
 function describeResponse(response, task) {
   if (!response) return 'No response';
@@ -212,6 +333,31 @@ function describeResponse(response, task) {
     return { w: 'Up', a: 'Left', s: 'Down', d: 'Right' }[response.toLowerCase()] ?? `Other key: ${response}`;
   }
   return 'Instruction keypress';
+}
+
+function inverseNormalCDF(probability) {
+  const a = [-39.6968302866538, 220.946098424521, -275.928510446969, 138.357751867269, -30.6647980661472, 2.50662827745924];
+  const b = [-54.4760987982241, 161.585836858041, -155.698979859887, 66.8013118877197, -13.2806815528857];
+  const c = [-0.00778489400243029, -0.322396458041136, -2.40075827716184, -2.54973253934373, 4.37466414146497, 2.93816398269878];
+  const d = [0.00778469570904146, 0.32246712907004, 2.445134137143, 3.75440866190742];
+  const tailThreshold = 0.02425;
+
+  if (probability <= 0 || probability >= 1) return Number.NaN;
+  if (probability < tailThreshold) {
+    const q = Math.sqrt(-2 * Math.log(probability));
+    return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+      ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+  }
+  if (probability > 1 - tailThreshold) {
+    const q = Math.sqrt(-2 * Math.log(1 - probability));
+    return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+      ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+  }
+
+  const centered = probability - 0.5;
+  const squared = centered * centered;
+  return (((((a[0] * squared + a[1]) * squared + a[2]) * squared + a[3]) * squared + a[4]) * squared + a[5]) * centered /
+    (((((b[0] * squared + b[1]) * squared + b[2]) * squared + b[3]) * squared + b[4]) * squared + 1);
 }
 
 const objectDatasetDirectory = 'stimuli/OBJECTSALL/';
@@ -285,8 +431,8 @@ function makePhase1Trial(matchLocation, valid, centerImageId, distractorIds, tri
   };
 }
 
-function makeRecognitionTrial(imageId, trialIndex) {
-  const isOld = phaseImageIds.includes(imageId);
+function makeRecognitionTrial(imageId, trialIndex, sourceTrial = null) {
+  const isOld = sourceTrial !== null;
   return {
     type: htmlKeyboardResponse,
     stimulus: `<img class="memory-image" src="${imagePath(imageId)}" alt="">\n<div class="response-prompt">F = OLD &nbsp;&nbsp;&nbsp; J = NEW</div>`,
@@ -298,11 +444,25 @@ function makeRecognitionTrial(imageId, trialIndex) {
       trial_index: trialIndex,
       image_id: imageId,
       image_status: isOld ? 'old' : 'new',
-      correct_response: isOld ? 'f' : 'j'
+      correct_response: isOld ? 'f' : 'j',
+      source_phase1_trial: sourceTrial?.data.trial_index ?? null,
+      source_cue_validity: sourceTrial?.data.validity ?? null,
+      source_target_location: sourceTrial?.data.match_location ?? null,
+      source_cue_direction: sourceTrial?.data.cue_direction ?? null,
+      source_phase1_response: null,
+      source_phase1_correct: null,
+      source_phase1_rt: null
     },
     on_finish: (data) => {
       data.response = data.response ?? '';
       data.accuracy = data.response === data.correct_response ? 1 : 0;
+      if (isOld) {
+        const sourceData = jsPsych.data.get().filter({ task: 'phase1_matching' }).values()
+          .find((row) => row.center_image_id === imageId);
+        data.source_phase1_response = sourceData?.participant_response ?? null;
+        data.source_phase1_correct = sourceData?.accuracy ?? null;
+        data.source_phase1_rt = sourceData?.rt ?? null;
+      }
     }
   };
 }
@@ -336,8 +496,20 @@ const practiceTimeline = practiceTrials.flatMap((trial) => [
   { type: htmlKeyboardResponse, stimulus: '<div class="fixation">+</div>', trial_duration: 500, choices: 'NO_KEYS', data: { task: 'practice_fixation', phase: 'practice', trial_type: 'fixation', duration_ms: 500 } },
   { type: htmlKeyboardResponse, stimulus: `<div class="cue">${arrowsByDirection[trial.data.cue_direction]}</div>`, trial_duration: 200, choices: 'NO_KEYS', data: { task: 'practice_cue', phase: 'practice', trial_type: 'cue', cue_direction: trial.data.cue_direction, duration_ms: 200 } },
   { type: htmlKeyboardResponse, stimulus: '<div class="fixation">+</div>', trial_duration: 300, choices: 'NO_KEYS', data: { task: 'practice_postcue_fixation', phase: 'practice', trial_type: 'postcue_fixation', duration_ms: 300 } },
-  trial
+  trial,
+  {
+    type: htmlKeyboardResponse,
+    stimulus: () => jsPsych.data.get().last(1).values()[0]?.accuracy === 1 ? '<p class="instruction">Correct</p>' : '<p class="instruction">Incorrect</p>',
+    trial_duration: 500,
+    choices: 'NO_KEYS',
+    data: { task: 'practice_feedback', phase: 'practice', trial_type: 'feedback', duration_ms: 500 }
+  }
 ]);
+const practiceLoop = {
+  timeline: practiceTimeline,
+  loop_function: (data) => data.filter({ task: 'practice_matching' }).values()
+    .filter((trial) => trial.accuracy === 1).length < 3
+};
 const phase1Schedule = shuffled(directions.flatMap((matchLocation) => [
   ...Array(12).fill({ matchLocation, valid: true }),
   ...Array(4).fill({ matchLocation, valid: false })
@@ -351,14 +523,28 @@ const phase1Trials = shuffled(phaseImageIds).map((centerImageId, index) =>
     index + 1
   )
 );
-const recognitionOldIds = shuffled(phaseImageIds).slice(0, newImageIds.length);
-const recognitionTrials = shuffled([...recognitionOldIds, ...newImageIds])
-  .map((imageId, index) => makeRecognitionTrial(imageId, index + 1));
+const invalidOldSources = phase1Trials.filter((trial) => trial.data.validity === 'invalid');
+const validOldSourcesByLocation = directions.map((direction) => shuffled(
+  phase1Trials.filter((trial) => trial.data.validity === 'valid' && trial.data.match_location === direction)
+).slice(0, 4));
+const recognitionOldSources = [
+  ...invalidOldSources,
+  ...validOldSourcesByLocation.flat()
+];
+const recognitionOldIds = recognitionOldSources.map((trial) => trial.data.center_image_id);
+const recognitionTrials = shuffled([
+  ...recognitionOldSources.map((sourceTrial) => ({
+    imageId: sourceTrial.data.center_image_id,
+    sourceTrial
+  })),
+  ...newImageIds.map((imageId) => ({ imageId, sourceTrial: null }))
+]).map(({ imageId, sourceTrial }, index) => makeRecognitionTrial(imageId, index + 1, sourceTrial));
 
 const timeline = [
-  instructions('Visual attention task', 'Keep your eyes on the center of the screen. Each trial begins with a fixation cross and an arrow, followed by a group of images. Respond with W for up, A for left, S for down, or D for right, according to the image that matches the center image.'),
+  { type: preloadPlugin, images: preloadImagePaths, message: '<p>Loading experiment...</p>', show_progress_bar: true, continue_after_error: false, show_detailed_errors: true },
+  instructions('Visual attention task', 'Keep your eyes on the center of the screen. Each trial begins with a fixation cross and an arrow, followed by a group of images. The arrow indicates where the matching image is likely to appear, but it is not always correct. Respond with W for up, A for left, S for down, or D for right, according to the image that matches the center image.'),
   instructions('Practice', 'You will first complete a short practice block.'),
-  ...practiceTimeline,
+  practiceLoop,
   instructions('Main task', 'The main task begins now. Respond as quickly and accurately as you can. There will be no feedback during the task.'),
   ...phase1Trials.flatMap((trial) => [
     { type: htmlKeyboardResponse, stimulus: '<div class="fixation">+</div>', trial_duration: 500, choices: 'NO_KEYS', data: { task: 'phase1_fixation', phase: 'phase1', trial_type: 'fixation', duration_ms: 500 } },
@@ -391,12 +577,20 @@ async function validateStimulusPaths(paths) {
     valid: phase1Trials.filter((trial) => trial.data.match_location === direction && trial.data.validity === 'valid').length,
     invalid: phase1Trials.filter((trial) => trial.data.match_location === direction && trial.data.validity === 'invalid').length
   }));
+  const invalidCueMatches = phase1Trials.filter((trial) => trial.data.validity === 'invalid'
+    && trial.data.cue_direction === trial.data.match_location);
+  const malformedGridTrials = [...practiceTrials, ...phase1Trials].filter((trial) => {
+    const distractors = trial.data.distractor_image_ids.split(',').filter(Boolean);
+    return distractors.length !== 3 || new Set([trial.data.center_image_id, ...distractors]).size !== 4;
+  });
 
   if (malformedPaths.length > 0) errors.push(`Malformed stimulus paths: ${malformedPaths.join(', ')}`);
   if (undefinedPaths.length > 0) errors.push(`Undefined stimulus paths: ${undefinedPaths.join(', ')}`);
   if (duplicatePreloadPaths.length > 0) errors.push(`Duplicate preload entries: ${[...new Set(duplicatePreloadPaths)].join(', ')}`);
   if (duplicateRecognitionIds.length > 0) errors.push(`Duplicate recognition images: ${[...new Set(duplicateRecognitionIds)].join(', ')}`);
   if (phase1Trials.length !== 64) errors.push(`Phase 1 requires 64 trials, found ${phase1Trials.length}.`);
+  if (invalidCueMatches.length > 0) errors.push(`Invalid cue points to the matching location on ${invalidCueMatches.length} trials.`);
+  if (malformedGridTrials.length > 0) errors.push(`${malformedGridTrials.length} matching trials do not contain a target and three unique distractors.`);
   if (duplicatePhaseTargets.length > 0) errors.push(`Phase 1 target images are reused: ${[...new Set(duplicatePhaseTargets)].join(', ')}`);
   phaseCounts.forEach(({ direction, total, valid, invalid }) => {
     if (total !== 16 || valid !== 12 || invalid !== 4) {
@@ -404,20 +598,15 @@ async function validateStimulusPaths(paths) {
     }
   });
   if (recognitionOldIds.length !== newImageIds.length) errors.push('Recognition old/new sets are not equal in size.');
-  if (newImageIds.some((id) => phaseImageIds.includes(id) || practiceImageIds.includes(id))) {
-    errors.push('Recognition new images overlap with Phase 1 or practice images.');
+  if (recognitionOldSources.length !== 32) errors.push(`Recognition requires 32 OLD images, found ${recognitionOldSources.length}.`);
+  if (invalidOldSources.length !== 16) errors.push(`Recognition requires all 16 invalid-target images, found ${invalidOldSources.length}.`);
+  if (validOldSourcesByLocation.some((sources) => sources.length !== 4)) errors.push('OLD valid targets must include four trials from each target location.');
+  if (newImageIds.some((id) => phaseImageIds.includes(id) || phaseDistractorIds.includes(id) || practiceImageIds.includes(id))) {
+    errors.push('Recognition NEW images overlap with practice or Phase 1 images.');
   }
-
-  const checkedPaths = [...new Set(paths)];
-  await Promise.all(checkedPaths.map(async (path) => {
-    try {
-      const response = await fetch(path);
-      if (!response.ok) errors.push(`Missing stimulus (${response.status}): ${path}`);
-      else await response.blob();
-    } catch (error) {
-      errors.push(`Failed to request stimulus: ${path} (${error.message})`);
-    }
-  }));
+  if (new Set([...practiceImageIds, ...phaseImageIds, ...phaseDistractorIds, ...newImageIds]).size !== 292) {
+    errors.push('Practice, Phase 1, and Phase 2 image allocations must contain 292 unique images.');
+  }
 
   if (errors.length > 0) {
     console.error('Stimulus validation failed:', errors);
@@ -425,16 +614,14 @@ async function validateStimulusPaths(paths) {
   }
 }
 
-async function preloadImages(paths) {
-  for (const path of paths) {
-    const response = await fetch(path);
-    if (!response.ok) throw new Error(`Failed to preload stimulus (${response.status}): ${path}`);
-    await response.blob();
-  }
-}
-
 const allStimulusPaths = [...preloadImagePaths, ...referencedStimulusPaths];
-await validateStimulusPaths(allStimulusPaths);
-await preloadImages(preloadImagePaths);
-console.log(`Validated and preloaded ${preloadImagePaths.length} stimulus images.`);
+try {
+  await validateStimulusPaths(allStimulusPaths);
+  console.log(`Validated ${preloadImagePaths.length} unique selected stimulus images; jsPsych preload will verify and load them.`);
+} catch (error) {
+  console.error(error);
+  document.getElementById('jspsych-target').innerHTML = '<section class="instruction"><h1>Experiment setup error</h1><p>Stimulus validation failed. Check the browser console for details.</p></section>';
+  throw error;
+}
+document.getElementById('jspsych-target').innerHTML = '';
 jsPsych.run(timeline);
