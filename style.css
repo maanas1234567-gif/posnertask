@@ -51,9 +51,9 @@ body {
 
 .fixation, .cue {
   position: fixed;
-  inset: 0;
-  display: grid;
-  place-items: center;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   color: #f4eee2;
 }
 .fixation { font: 3.5rem/1 Arial, sans-serif; }
